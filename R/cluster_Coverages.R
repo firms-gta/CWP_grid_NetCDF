@@ -2,7 +2,7 @@ cluster_Coverages <- function(this_df){
   
   coverages_df <- list()
   # this_df <- this_metadata$test_df
-  if(this_metadata$variable=="catch"){
+  if(grepl("catch",this_metadata$variable)){
     # dimensions <- c("time_rowid","species_rowid","gear_rowid","fishing_fleet_rowid","fishing_mode_rowid","measurement_unit")
     #grouping pixels for each coverage = possible combinationof dimensions
     coverages_df$all_coverages <-  this_df  %>% group_by(time_rowid,species_rowid,gear_rowid,fishing_fleet_rowid,fishing_mode_rowid,measurement_unit) %>% 
@@ -22,6 +22,7 @@ cluster_Coverages <- function(this_df){
     #number of coverages for this spatial resolution :
     
   }
+  
   if(this_metadata$variable=="effort"){
     # dimensions <- c("time_rowid","gear_rowid","fishing_fleet_rowid","fishing_mode_rowid","measurement_unit")
     #grouping pixels for each coverage = possible combinationof dimensions
@@ -42,6 +43,21 @@ cluster_Coverages <- function(this_df){
 
         #number of coverages for this spatial resolution :
     # length(unique(coverages$coverage_id))
+  }
+  if(this_metadata$variable=="conversion_factor"){
+    coverages_df$all_coverages <-  this_df  %>% group_by(time_rowid,species_rowid,gear_rowid,measurement_unit) %>% 
+      summarise(nb_pix = n()) %>% ungroup() %>% arrange(species_rowid,gear_rowid,measurement_unit,nb_pix) %>% 
+      mutate(coverage_id = row_number())
+    
+    coverages_df$nb_coverages_group <-  coverages_df$all_coverages %>% group_by(species_rowid,gear_rowid) %>% 
+      summarise(nb_in_group = n(), nb_lines = sum(nb_pix)) %>% ungroup() %>% arrange(species_rowid,gear_rowid,nb_in_group) %>% 
+      mutate(group_id = row_number(),file_name_suffix=paste(species_rowid,gear_rowid,sep="_")) 
+    
+    coverages_df$coverages <- this_df %>% 
+      dplyr::left_join(coverages_df$all_coverages, by = c("time_rowid","species_rowid","gear_rowid","measurement_unit")) %>% #dplyr::select(-c(nb_pix)) %>% 
+      dplyr::left_join(coverages_df$nb_coverages_group,by=c("species_rowid","gear_rowid")) %>% 
+      arrange(desc(nb_in_group),group_id,coverage_id,species_rowid,gear_rowid,measurement_unit,time_rowid)  %>% relocate(time_rowid)
+    
   }
   
 

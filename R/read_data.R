@@ -1,6 +1,20 @@
 read_data <- function(this_metadata){
   
   options(timeout=300)
+  
+  if(!file.exists(here::here("data/cl_nc_areas_simplfied.gpkg"))){
+    df_distinct_geom_nominal <- read_csv("https://github.com/fdiwg/fdi-codelists/raw/main/global/firms/gta/cl_nc_areas.csv") %>% 
+      dplyr::mutate('geom'=geom_wkt)  %>%
+      sf::st_as_sf(wkt="geom",crs=4326)  %>% st_simplify(dTolerance = 0.5) 
+    st_write(df_distinct_geom_nominal,dsn = here::here("data/cl_nc_areas_simplfied.gpkg"))
+  }
+  
+    
+  if(!file.exists(paste0(dir_code,"data/global_nominal_catch_firms_level0_harmonized.parquet"))){
+    download.file(url = "https://zenodo.org/records/17494424/files/global_nominal_catch_firms_level0_harmonized.parquet?download=1",
+                  destfile = paste0(dir_code,"./data/global_nominal_catch_firms_level0_harmonized.parquet"))
+    }
+  
   if(!file.exists(paste0(dir_code,"data/global_catch_tunaatlasird_level2_1950_2023_without_geom.csv"))){
     download.file(url = "https://zenodo.org/records/15405414/files/global_catch_tunaatlasird_level2_1950_2023_without_geom.csv?download=1",
                   destfile = paste0(dir_code,"./data/global_catch_tunaatlasird_level2_1950_2023_without_geom.csv"))
@@ -31,11 +45,14 @@ read_data <- function(this_metadata){
   # LOAD THE WHOLE DATASET
   # load catch spatial data from local files or Zenodo : https://zenodo.org/records/15496164 / Abstract DOI https://doi.org/10.5281/zenodo.1164127
   this_metadata$whole_df <- switch(paste0(this_metadata$variable,"_",this_metadata$level),
+                                   "nominal_catch_L0"= arrow::read_parquet("./data/global_nominal_catch_firms_level0_harmonized.parquet"),
                                    "catch_L2"= qs::qread("./data/global_catch_tunaatlasird_level2_1950_2023.qs"),
                                    "catch_L0"= arrow::read_parquet("./data/global_catch_firms_level0_harmonized.parquet"),
                                    # "catch_L2"= read.csv("./data/global_catch_tunaatlasird_level2_1950_2023_without_geom.csv"),
                      # "catch_L2"=qs2::qread("~/Téléchargements/global_catch_tunaatlasird_level2_1950_2023.qs"),
-                     "effort_L0"= qs::qread("./data/global_effort_tunaatlasird_level0_1950_2023.qs") %>% mutate_at(vars(gear_type), as.character)
+                     # "effort_L0"= qs::qread("./data/global_effort_tunaatlasird_level0_1950_2023.qs") %>% mutate_at(vars(gear_type), as.character)
+                     "effort_L0"=  read.csv("./data/global_effort_2026_harmonized.csv",colClasses=c("character")),
+                     "conversion_factor_L0"=  read.csv("./data/IOTC_conv_fact_mapped.csv",colClasses=c("character"))
   ) %>% as_tibble()
   
   # TRANSFORM STRING VALUES IN THE ORIGINAL DATAFRAME INTO NUMBERS / Index of codelists
@@ -45,13 +62,21 @@ read_data <- function(this_metadata){
   
   # Build the spatial grids : all pixels in the bounding box
   
-  # lons <- this_metadata$dim_codes$lon %>% dplyr::filter(lon %in% unique(this_metadata$dim_codes$new_df$lon))
-  this_metadata$lons <- seq(from=min(unique(this_metadata$dim_codes$new_df$lon)), to=max(unique(this_metadata$dim_codes$new_df$lon)), by=this_metadata$sp_resolution) %>% 
-    as.data.frame()  %>% setNames(c("lon"))  %>% mutate(lon_rowid = row_number())
+  if(this_metadata$variable=="catch" || this_metadata$variable=="effort" || this_metadata$variable=="conversion_factor"){
+    # lons <- this_metadata$dim_codes$lon %>% dplyr::filter(lon %in% unique(this_metadata$dim_codes$new_df$lon))
+    this_metadata$lons <- seq(from=min(unique(this_metadata$dim_codes$new_df$lon)), to=max(unique(this_metadata$dim_codes$new_df$lon)), by=this_metadata$sp_resolution) %>% 
+      as.data.frame()  %>% setNames(c("lon"))  %>% mutate(lon_rowid = row_number())
+    
+    # lats <- this_metadata$dim_codes$lat %>% dplyr::filter(lat %in% unique(this_metadata$dim_codes$new_df$lat))
+    this_metadata$lats <-  seq(from=min(unique(this_metadata$dim_codes$new_df$lat)), to=max(unique(this_metadata$dim_codes$new_df$lat)), by=this_metadata$sp_resolution)%>% 
+      as.data.frame()  %>% setNames(c("lat"))  %>% mutate(lat_rowid = row_number())
+  }else if(this_metadata$variable =="nominal_catch"){
+    this_metadata$lons <- this_metadata$dim_codes$lon
+    this_metadata$lats <-  this_metadata$dim_codes$lat
+  }
+    
+  
 
-  # lats <- this_metadata$dim_codes$lat %>% dplyr::filter(lat %in% unique(this_metadata$dim_codes$new_df$lat))
-  this_metadata$lats <-  seq(from=min(unique(this_metadata$dim_codes$new_df$lat)), to=max(unique(this_metadata$dim_codes$new_df$lat)), by=this_metadata$sp_resolution)%>% 
-    as.data.frame()  %>% setNames(c("lat"))  %>% mutate(lat_rowid = row_number())
   
   # Metadata to describe Spatio-temporal extent
   this_metadata$time_coverage_start <- min(this_metadata$dim_codes$times$time_start)
@@ -62,12 +87,16 @@ read_data <- function(this_metadata){
   this_metadata$geospatial_lon_min <- min(this_metadata$lons$lon)
   this_metadata$geospatial_lon_max <- max(this_metadata$lons$lon)
   
-  this_metadata$template_filename <- paste0("/Global_Tuna_Atlas_",this_metadata$variable,"_",this_metadata$level,"_",
-                                            this_metadata$sp_resolution,"deg_1m","_in_",
-                                            paste(this_metadata$catch_unit, collapse = '_and_'),"_",
-                                            this_metadata$time_coverage_start,"_",this_metadata$time_coverage_end )
-  this_metadata$id <- this_metadata$template_filename
-  this_metadata$filename <- this_metadata$template_filename
+  paste0(this_metadata$variable,"_",this_metadata$level,"_",this_metadata$sp_resolution,"_Deg_in_",paste(this_metadata$catch_unit, collapse = '_and_'))
+  this_metadata$id <- paste0("Global_Tuna_Atlas_",this_metadata$variable,"_",this_metadata$level,"_",
+                             this_metadata$sp_resolution,"deg_1m","_in_",
+                             paste(this_metadata$catch_unit, collapse = '_and_'),"_",
+                             this_metadata$time_coverage_start,"_",this_metadata$time_coverage_end )
+  
+  
+  this_metadata$template_filename <- paste0("/",this_metadata$id)
+  this_metadata$filename <- this_metadata$id
+  
   
   time_steps <-  sort(unique(this_metadata$dim_codes$times$time_rowid))
   
@@ -82,26 +111,29 @@ read_data <- function(this_metadata){
   #   empty_time_steps[mydf$time_rowid[i]] = mydf$measurement_value[i]
   # }
   # empty_time_steps
-  if(this_metadata$variable=="catch"){
+  if(grepl("catch",this_metadata$variable)){
     this_metadata$test_df <- this_metadata$dim_codes$new_df  %>% 
       dplyr::left_join(this_metadata$lons) %>% 
       dplyr::left_join(this_metadata$lats) %>% 
-      dplyr::left_join(this_metadata$dim_codes$geoms) %>% 
+      dplyr::left_join(this_metadata$dim_codes$geoms,by=c("geographic_identifier")) %>% #dplyr::select(c("lon_rowid","lat_rowid","geographic_identifier"))
       dplyr::select(c("lon_rowid","lat_rowid","time_rowid","species_rowid","gear_rowid","fishing_fleet_rowid","fishing_mode_rowid","measurement_value","measurement_unit","geographic_identifier")) %>% 
       dplyr::rename(lon=lon_rowid,lat=lat_rowid) %>% dplyr::arrange(lon,lat) # %>% dplyr::relocate(geographic_identifier)
     # dplyr::select(c("nb_lines","rowid","lon","lon_rowid","lat","lat_rowid","time_rowid","species_rowid","gear_rowid","fishing_fleet_rowid","fishing_mode_rowid","measurement_value"))
-    # View(test_df)
-    # nrow(test_df)
-    # unique(test_df$geographic_identifier)
-  }
-  if(this_metadata$variable=="effort"){
+  }else if(this_metadata$variable=="effort"){
     this_metadata$test_df <- this_metadata$dim_codes$new_df  %>% 
       dplyr::left_join(this_metadata$lons) %>% 
       dplyr::left_join(this_metadata$lats) %>% 
       dplyr::left_join(this_metadata$dim_codes$geoms) %>% 
       dplyr::select(c("lon_rowid","lat_rowid","time_rowid","gear_rowid","fishing_fleet_rowid","fishing_mode_rowid","measurement_value","measurement_unit","geographic_identifier")) %>% 
       dplyr::rename(lon=lon_rowid,lat=lat_rowid) %>% dplyr::arrange(lon,lat) # %>% dplyr::relocate(geographic_identifier)
-  }  
+  }  else if(this_metadata$variable=="conversion_factor"){
+    this_metadata$test_df <- this_metadata$dim_codes$new_df  %>% 
+      dplyr::left_join(this_metadata$lons) %>% 
+      dplyr::left_join(this_metadata$lats) %>% 
+      dplyr::left_join(this_metadata$dim_codes$geoms) %>% 
+      dplyr::select(c("lon_rowid","lat_rowid","time_rowid","species_rowid","gear_rowid","measurement_value","measurement_unit","geographic_identifier")) %>% 
+      dplyr::rename(lon=lon_rowid,lat=lat_rowid) %>% dplyr::arrange(lon,lat) # %>% dplyr::relocate(geographic_identifier)
+  }
   
   
   

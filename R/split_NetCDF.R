@@ -4,6 +4,7 @@ split_NetCDF <- function(this_df,cores){
   these_coverages <- this_df %>% mutate(group_assigned = group_id)
   # these_coverages <- this_metadata$coverages_df$coverages %>% mutate(group_assigned = NA) %>% arrange(group_id,coverage_id) 
   # cores <- 20
+  init_cores <- cores
   #initialize the list storing the vector will the name of group if for each core 
   list_groups_assigned <- list()
   
@@ -177,7 +178,7 @@ split_NetCDF <- function(this_df,cores){
       this_total <- this_total + cpl$nb_lines[index]
       this_group_assigned <- c(this_group_assigned,cpl$group_id[index])
       this_group_assigned <- sort(this_group_assigned)
-      list_groups_assigned[[n]]  <- sort(this_group_assigned)
+      list_groups_assigned[[init_cores]]  <- sort(this_group_assigned)
     }
   }
 

@@ -72,7 +72,7 @@ write_NetCDF <- function(this_metadata,nb_cores=1){
   fleets <- this_metadata$dim_codes$fleets
   modes <- this_metadata$dim_codes$modes
   
-  if(file_unit %in% c("full","both")){
+  if(file_unit %in% c("full","all")){
     
     metadata=this_metadata
     metadata$filename=paste0("full_",this_metadata$sp_resolution,"deg.nc")
@@ -91,7 +91,7 @@ write_NetCDF <- function(this_metadata,nb_cores=1){
     
   }
   
-  if(file_unit %in% c("coverage","both")){
+  if(file_unit %in% c("coverage","all")){
     metadata=this_metadata
     metadata$filename="template_coverage.nc"
     metadata$file_unit="coverage"
@@ -110,7 +110,7 @@ write_NetCDF <- function(this_metadata,nb_cores=1){
     
   }
   
-  if(file_unit %in% c("coverage_group","both")){
+  if(file_unit %in% c("coverage_group","all")){
     metadata=this_metadata
     metadata$filename="template_group.nc"
     metadata$file_unit="coverage_group"
@@ -150,7 +150,7 @@ write_NetCDF <- function(this_metadata,nb_cores=1){
     nb_coverages <- unique(coverages_chunk$coverage_id)
     filename <- NULL
     
-    if(file_unit=="coverage_group"  || file_unit=="both"){
+    if(file_unit=="coverage_group"  || file_unit=="all"){
       for(g in nb_group_coverages){
         resTDgroup <- coverages_chunk %>% dplyr::filter(group_id==g) 
         nb_coverages <- unique(resTDgroup$coverage_id)
@@ -169,6 +169,10 @@ write_NetCDF <- function(this_metadata,nb_cores=1){
                             "_Fleet_",fleets[as.numeric(resTDgroup[1,5]),1],
                             "_Mode_",modes[as.numeric(resTDgroup[1,6]),1],
                             "_Group_",resTDgroup[1,16],"_min_Coverage_",min(nb_coverages))
+        }
+        
+        if(file.exists(filename)){
+          print(paste0("########################### This file already exists !:",filename))
         }
         
         this_nc_t <- NULL
@@ -209,12 +213,12 @@ write_NetCDF <- function(this_metadata,nb_cores=1){
           for(i in nb_coverages){
             resTD <- resTDgroup %>% dplyr::filter(coverage_id==i)
             ##### Check if also aksed to write one NetCDF file per coverage => prepare an empty NetCDF file
-            if(file_unit=="coverage"  || file_unit=="both" ){
+            if(file_unit=="coverage"  || file_unit=="all" ){
               
               #To do faire la concatenation du filename dans le dataframe
               if(variable == "catch"){
                 coverage_nc_filename = paste0(dir_NetCDF,"/coverage",template_filename,
-                                              "_in_",resTD[1,9],
+                                              "_unit_",resTD[1,9],
                                               "_Time_",times[as.numeric(resTD[1,1]),4],
                                               "_Species_",species[as.numeric(resTDgroup[1,4]),1],
                                               "_Gear_",gsub(" ","_",gears[as.numeric(resTDgroup[1,5]),5]),
@@ -222,8 +226,16 @@ write_NetCDF <- function(this_metadata,nb_cores=1){
                                               "_Mode_",modes[as.numeric(resTDgroup[1,7]),1],
                                               "_Group_",resTDgroup[1,17],"_Coverage_",as.numeric(resTDgroup[1,12]))
               }else{
+                # coverage_nc_filename = paste0(dir_NetCDF,"/coverage",template_filename,
+                #                               "_unit_",gsub(" ","-",gsub("\\.","-",resTD[1,8])),
+                #                               "_Time_",times[as.numeric(resTD[1,1]),4],
+                #                               "_Gear_",gsub(" ","_",gears[as.numeric(resTDgroup[1,4]),5]),
+                #                               "_Fleet_",fleets[as.numeric(resTDgroup[1,5]),1],
+                #                               "_Mode_",modes[as.numeric(resTDgroup[1,6]),1],
+                #                               "_Group_",resTDgroup[1,16],"_Coverage_",as.numeric(resTDgroup[1,11]))
+                
                 coverage_nc_filename = paste0(dir_NetCDF,"/coverage",template_filename,
-                                              "_in_",gsub("\\.","-",resTD[1,8]),
+                                              "_unit_",gsub(" ","-",gsub("\\.","-",resTD[1,8])),
                                               "_Time_",times[as.numeric(resTD[1,1]),4],
                                               "_Gear_",gsub(" ","_",gears[as.numeric(resTDgroup[1,4]),5]),
                                               "_Fleet_",fleets[as.numeric(resTDgroup[1,5]),1],
@@ -231,6 +243,9 @@ write_NetCDF <- function(this_metadata,nb_cores=1){
                                               "_Group_",resTDgroup[1,16],"_Coverage_",as.numeric(resTDgroup[1,11]))
               }
 
+              if(file.exists(coverage_nc_filename)){
+                print(paste0("########################### This file already exists !:",coverage_nc_filename))
+              }
               
               file.copy(paste0(dir_NetCDF,"/template_coverage.nc"),to = paste0(coverage_nc_filename,".nc"))
               this_coverage_nc <- NULL
